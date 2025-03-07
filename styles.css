@@ -1,0 +1,28 @@
+.socrates-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding: 0 8px;
+}
+
+.socrates-title {
+    margin: 0;
+}
+
+.socrates-refresh-button {
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.socrates-summary {
+    padding: 8px;
+    overflow-y: auto;  /* Add scrolling for long content */
+    max-height: 100%;  /* Take full height */
+}
+
+.socrates-summary > div {
+    white-space: pre-wrap;  /* Preserve line breaks */
+    word-wrap: break-word;  /* Break long words */
+    line-height: 1.5;      /* Improve readability */
+} 

@@ -1,0 +1,10 @@
+{
+    "id": "socrates",
+    "name": "Socrates",
+    "version": "1.0.0",
+    "minAppVersion": "0.15.0",
+    "description": "Socratic method plugin for Obsidian",
+    "author": "Your Name",
+    "isDesktopOnly": false,
+    "css": "styles.css"
+} 
