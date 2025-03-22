@@ -4,7 +4,6 @@ import OpenAI from 'openai';
 interface MyPluginSettings {
     apiKey: string;
     defaultPrompt: string;
-    userPrompt: string;
     model: string;
 }
 
@@ -16,13 +15,13 @@ interface MyPluginViewState {
 const DEFAULT_SETTINGS: MyPluginSettings = {
     apiKey: '',
     defaultPrompt: 'You are a helpful assistant that provides concise summaries.',
-    userPrompt: 'Please analyze this text:',
-    model: 'gpt-4'
+    model: 'gpt-4o'
 }
 
 class MyPluginView extends ItemView {
     private openai: OpenAI | null = null;
     private summaryEl: HTMLElement;
+    private fileSizes: Map<string, number> = new Map();
 
     constructor(leaf: WorkspaceLeaf, private plugin: MyPlugin) {
         super(leaf);
@@ -40,6 +39,15 @@ class MyPluginView extends ItemView {
 
     getDisplayText(): string {
         return "Socrates View";
+    }
+
+    private calculateIntensity(size: number): number {
+        // Define size thresholds for different intensities
+        const thresholds = [0, 100, 500, 1000]; // bytes
+        for (let i = thresholds.length - 1; i >= 0; i--) {
+            if (size >= thresholds[i]) return i;
+        }
+        return 0;
     }
 
     async onOpen(): Promise<void> {
@@ -63,6 +71,20 @@ class MyPluginView extends ItemView {
         refreshButton.addEventListener("click", () => {
             this.updateSummary();
         });
+
+        // Add activity widget with title
+        const activityEl = container.createEl("div", { cls: "socrates-activity" });
+        activityEl.createEl("div", { text: "Activity", cls: "activity-title" });
+        
+        // Create grid container
+        const gridEl = activityEl.createEl("div", { cls: "activity-grid" });
+        
+        // Create grid of boxes (7 rows, 12 columns)
+        for (let row = 0; row < 7; row++) {
+            for (let col = 0; col < 12; col++) {
+                const box = gridEl.createEl("div", { cls: "activity-box" });
+            }
+        }
         
         // Create summary element
         this.summaryEl = container.createEl("div", { cls: "socrates-summary" });
@@ -78,42 +100,93 @@ class MyPluginView extends ItemView {
         );
     }
 
+    async getUserPromptFromFile(): Promise<string> {
+        try {
+            const instructionsFile = this.app.vault.getAbstractFileByPath('Socrates/Instructions.md');
+            
+            if (instructionsFile instanceof TFile) {
+                const content = await this.app.vault.read(instructionsFile);
+                return content;
+            } else {
+                // If file doesn't exist, create it with default content
+                const defaultInstructions = 'Please analyze this text:';
+                await this.app.vault.createFolder('Socrates');
+                await this.app.vault.create('Socrates/Instructions.md', defaultInstructions);
+                return defaultInstructions;
+            }
+        } catch (error) {
+            return 'Please analyze this text:';
+        }
+    }
+
     async updateSummary() {
-        console.log('Updating summary...');
-        
         if (!this.openai) {
-            console.log('No OpenAI client - missing API key');
             this.summaryEl.setText('Please configure OpenAI API key in settings');
             return;
         }
 
+        // Scan Щоденник folder
+        const diaryFolder = this.app.vault.getAbstractFileByPath('Щоденник');
+        this.fileSizes.clear(); // Clear previous data
+
+        if (diaryFolder instanceof TFile) {
+            // Handle file case
+        } else if (diaryFolder) {
+            // Get all files in the folder
+            const files = this.app.vault.getFiles().filter(file => 
+                file.path.startsWith('Щоденник/') && 
+                file.extension === 'md'
+            );
+
+            // Get size of each file
+            for (const file of files) {
+                const content = await this.app.vault.read(file);
+                const date = file.path.replace('Щоденник/', '').replace('.md', '');
+                this.fileSizes.set(date, content.length);
+            }
+            // Update activity grid
+            const gridEl = this.containerEl.querySelector('.activity-grid');
+            if (gridEl) {
+                const boxes = gridEl.querySelectorAll('.activity-box');
+                boxes.forEach((box, index) => {
+                    const currentWeekDayIndex = new Date().getDay();
+                    const column = index % 12
+                    const row = Math.floor(index / 12)
+                    const daysToBox = currentWeekDayIndex - 1 + (12 - column -2) * 7 + 7 - row;
+
+                    const date = new Date();
+                    date.setDate(date.getDate() - daysToBox);
+                    const size = this.fileSizes.get(date.toISOString().split('T')[0]) || 0;
+                    const intensity = this.calculateIntensity(size);
+                    box.className = `activity-box intensity-${intensity}`;
+                    if (daysToBox === 0) {
+                        box.addClass('current-day');
+                    }
+                    box.setAttribute('title', `${date.toISOString().split('T')[0]}: ${size} bytes`);
+                });
+            }
+        }
+
+        // Rest of the existing updateSummary code...
         const currentFile = this.app.workspace.getActiveFile();
         if (!currentFile) {
-            console.log('No active file');
             this.summaryEl.setText('No file is currently open');
             return;
         }
 
-        console.log('Reading file:', currentFile.path);
         const content = await this.app.vault.read(currentFile);
         
         // Get file properties/frontmatter
         const metadata = this.app.metadataCache.getFileCache(currentFile);
         const customPrompt = metadata?.frontmatter?.prompt;
-        const customUserPrompt = metadata?.frontmatter?.userPrompt;
         const systemPrompt = customPrompt || this.plugin.settings.defaultPrompt;
-        const userPrompt = customUserPrompt || this.plugin.settings.userPrompt;
-        
-        console.log('Using system prompt:', systemPrompt);
-        console.log('Using user prompt:', userPrompt);
         
         try {
-            console.log('Calling OpenAI API...');
             this.summaryEl.empty();  // Clear previous content
             this.summaryEl.createDiv({ text: 'Generating summary...' });
             
-            // Log content length for debugging
-            console.log('Content length:', content.length, 'characters');
+            // Get user prompt from file
+            const userPrompt = await this.getUserPromptFromFile();
             
             const response = await this.openai.chat.completions.create({
                 model: this.plugin.settings.model,
@@ -128,13 +201,7 @@ class MyPluginView extends ItemView {
                 temperature: 0.7
             });
 
-            console.log('Received response from OpenAI');
             const summary = response.choices[0]?.message?.content || 'No summary generated';
-            
-            // Log if the response was truncated
-            if (response.choices[0]?.finish_reason === 'length') {
-                console.log('Warning: Response was truncated due to length');
-            }
             
             // Update the display with preserved line breaks
             this.summaryEl.empty();
@@ -142,7 +209,6 @@ class MyPluginView extends ItemView {
             summaryDiv.style.whiteSpace = 'pre-wrap';
             summaryDiv.setText(summary);
         } catch (error) {
-            console.error('Error generating summary:', error);
             this.summaryEl.empty();
             this.summaryEl.createDiv({ text: 'Error generating summary: ' + (error as Error).message });
         }
@@ -193,20 +259,15 @@ export default class MyPlugin extends Plugin {
             id: 'show-socrates-view',
             name: 'Show Socrates Panel',
             callback: () => {
-                console.log('Socrates command triggered');
                 this.activateView();
             }
         });
 
         // Add settings tab
         this.addSettingTab(new MyPluginSettingTab(this.app, this));
-
-        // Log that plugin has loaded
-        console.log('Socrates plugin loaded');
     }
 
     async onunload() {
-        console.log('Unloading Socrates plugin...');
         await this.app.workspace.detachLeavesOfType("socrates-view");
     }
 
@@ -221,29 +282,21 @@ export default class MyPlugin extends Plugin {
     async activateView() {
         const { workspace } = this.app;
         
-        console.log('Activating Socrates view');
-        
         let leaf = workspace.getLeavesOfType("socrates-view")[0];
-        console.log('Existing leaf:', leaf ? 'found' : 'not found');
         
         if (!leaf) {
-            console.log('Creating new leaf');
             const newLeaf = workspace.getRightLeaf(false);
             if (newLeaf) {
-                console.log('Setting view state');
                 await newLeaf.setViewState({
                     type: "socrates-view",
                     active: true,
                 });
                 leaf = newLeaf;
-                console.log('New leaf created and configured');
             } else {
-                console.error("Could not create new leaf");
                 return;
             }
         }
         
-        console.log('Revealing leaf');
         workspace.revealLeaf(leaf);
     }
 
@@ -283,7 +336,6 @@ class MyPluginSettingTab extends PluginSettingTab {
             .setDesc('Select OpenAI model to use')
             .addDropdown(dropdown => dropdown
                 .addOption('gpt-4o', 'GPT-4o')
-                .addOption('gpt-4', 'GPT-4')
                 .addOption('gpt-3.5-turbo', 'GPT-3.5 Turbo')
                 .setValue(this.plugin.settings.model)
                 .onChange(async (value) => {
@@ -302,22 +354,11 @@ class MyPluginSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        new Setting(containerEl)
-            .setName('User Prompt')
-            .setDesc('User prompt prefix (can be overridden in note properties with "userPrompt")')
-            .addTextArea(text => text
-                .setPlaceholder('Enter user prompt')
-                .setValue(this.plugin.settings.userPrompt)
-                .onChange(async (value) => {
-                    this.plugin.settings.userPrompt = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // Style both textareas
-        const textareas = containerEl.querySelectorAll('.setting-item textarea') as NodeListOf<HTMLTextAreaElement>;
-        textareas.forEach(textarea => {
+        // Style textarea
+        const textarea = containerEl.querySelector('.setting-item textarea') as HTMLTextAreaElement;
+        if (textarea) {
             textarea.style.width = '100%';
             textarea.style.height = '100px';
-        });
+        }
     }
 } 

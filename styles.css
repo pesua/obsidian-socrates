@@ -25,4 +25,56 @@
     white-space: pre-wrap;  /* Preserve line breaks */
     word-wrap: break-word;  /* Break long words */
     line-height: 1.5;      /* Improve readability */
+}
+
+.socrates-activity {
+    margin: 10px 8px;
+    padding: 10px;
+    background-color: var(--background-secondary);
+    border-radius: 6px;
+    width: fit-content;
+}
+
+.activity-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-normal);
+}
+
+.activity-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 15px); /* Fixed width columns */
+    grid-template-rows: repeat(7, 15px);    /* Fixed height rows */
+    gap: 3px;
+    margin-bottom: 10px;
+    padding: 4px;
+    background-color: var(--background-primary);
+    border-radius: 4px;
+    justify-content: start; /* Align grid to the left */
+}
+
+.activity-box {
+    width: 15px;
+    height: 15px;
+    min-width: 15px;
+    min-height: 15px;
+    border-radius: 2px;
+    background-color: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    transition: all 0.2s ease;
+    cursor: help; /* Shows tooltip cursor */
+}
+
+.activity-box.current-day {
+    border: 2px solid var(--interactive-accent);
+}
+
+.activity-box.intensity-0 { background-color: var(--background-primary-alt); }
+.activity-box.intensity-1 { background-color: var(--interactive-accent); opacity: 0.3; }
+.activity-box.intensity-2 { background-color: var(--interactive-accent); opacity: 0.6; }
+.activity-box.intensity-3 { background-color: var(--interactive-accent); opacity: 0.9; }
+
+.activity-box:hover {
+    transform: scale(1.1);
 } 
